@@ -14,10 +14,24 @@ All amounts are in DKK.
 
 1. Read the S&P 500 **total** return (includes dividends) and US CPI inflation for each year.
 2. Convert to a real return with Fisher: `real = (1 + nominal) / (1 + inflation) - 1`.
-3. Add back a flat 2% inflation: `adjusted = real + 0.02`.
-   This deliberately discards the historical inflation *path* (1946's 18%, the 1970s) and
-   replaces it with a constant, so no single path is distorted by an inflation regime that
-   won't repeat. The result is a nominal return in "2%-inflation kroner".
+3. What happens next depends on the switch **`USE_INFLATION_ADJUSTED_RETURNS`** (cell 1):
+
+   **`True`** — add back a flat 2%: `adjusted = real + 0.02`. This discards the historical
+   inflation *path* (1946's 18%, the 1970s) and replaces it with a constant, so no path is
+   distorted by an inflation regime that won't repeat. Returns are then nominal, in
+   "2%-inflation kroner", and the deflator is a deterministic `1.02^t` on every path.
+
+   **`False`** — sample the **nominal** return instead, paired with that year's **realised**
+   inflation. Both are drawn from the same calendar year (the sampler collects an *index*
+   path, so they cannot decouple). The simulation runs entirely in nominal kroner and each
+   path carries its own deflator.
+
+   The difference matters because the mortgage is a fixed **nominal** liability. Mode `True`
+   erodes it at exactly 2%/yr, every path. Mode `False` lets inflation do what it actually
+   did — which is the only way to price the inflation hedge the loan contains. On the default
+   scenario this is worth roughly **+2.9M in today's DKK** (median 11.0M vs 14.0M), because
+   mode `True` keeps the real-return damage inflation does to equities while withholding the
+   relief it gives the borrower.
 
 **Loan** (`loan_schedule`), a 30-year fixed-rate annuity:
 
@@ -70,13 +84,18 @@ for a company, so a bad year still "banks" its deduction rather than wasting it.
    their real ordering (crashes, recoveries, mean reversion). If a path runs past the end of
    the data it jumps to a new random start year and continues.
 8. Repeat for 500 paths; take the 2.5th / 50th / 97.5th percentile **per year** across paths.
+9. The final cell shows the portfolio, the **debt**, and the net gain in *both* nominal kroner
+   and today's purchasing power, dividing each path by its own cumulative deflator. The two
+   debt curves separating is the inflation hedge made visible.
 
 Those bands are the spread of *outcomes*, not a confidence interval on a mean. They are also
 re-samples of only 69 distinct 30-year windows — 98 years of data at a 30-year horizon is
 about 3 independent observations, so the tails are far less certain than 500 paths suggests.
 
-**Reading the numbers:** results are nominal in 2%-inflation kroner. Divide by
-`1.02^30 = 1.811` for today's purchasing power.
+**Reading the numbers:** the simulation is always in nominal kroner, so cells 8-10 report
+nominal figures. The final cell converts to today's purchasing power for you. Doing it by
+hand only works in mode `True`, where the factor is a fixed `1.02^30 = 1.811`; in mode
+`False` every path has its own (median 2.61x, range 1.26x-5.10x).
 
 ---
 
@@ -89,8 +108,8 @@ Each of these pushes the result in the stated direction:
 | **Bidragssats** (0.6–1.1% p.a. of balance for erhverv) — the largest omission | too optimistic |
 | Fund TER and non-reclaimable US dividend withholding (~0.3–0.5% p.a.) | too optimistic |
 | Portfolio floored at 0 while payments continue, so terminal loss cannot go below 0 — a wipeout at year 12 still reports `net_gain = 0` | hides the downside |
-| `real + 0.02` instead of `(1 + real) × 1.02 − 1` | small, ~0.2pp in a good year |
-| Fixed 2% inflation removes the inflation hedge: fixed nominal debt is *not* eroded, while real equity returns still absorb inflation shocks | too pessimistic |
+| `real + 0.02` instead of `(1 + real) × 1.02 − 1`, in mode `True` only | small, ~0.2pp in a good year |
+| ~~Fixed 2% inflation removes the inflation hedge~~ — **now modelled**: set `USE_INFLATION_ADJUSTED_RETURNS = False` | was too pessimistic by ~2.9M |
 | The callable bond: if rates rise the loan can be bought back below par, a real option worth most exactly when equities hurt | too pessimistic |
 | Unhedged USD/DKK exposure (US returns deflated by US CPI) | understates variance |
 | 60% *underskudsbegrænsning* above ~9.8M of income; kurstab deductibility timing | minor, verify with revisor |
